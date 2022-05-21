@@ -17,10 +17,8 @@ class DirichletFiniteAgent:
         self.M = np.ones([S, A, S])
         self.trans_p = trans_p
         self.reward = reward
-        self.mu_0 = 0.0
-        self.tau_0 = 1.0
-        self.mean = 0.0
-        self.var = 0.0
+        self.R_mean = 1.0
+        self.R_var = 0
 
     def update(self, R, mean, variance, tau_0, mu_0, sample_size):
         #tau_0 and mu_0 are priors of mean
@@ -47,8 +45,8 @@ class DirichletFiniteAgent:
                 value = value_func[s]
                 action_returns = []
                 for a in range(A):
-                    action_return = np.sum(
-                        [trans_prob[s, a, s_next] * (reward[s, a, s_next] + gamma * value_func[s_next]) for s_next in range(S)])  # computes the undiscounted returns
+                    action_return = reward[s, a] + gamma * np.sum(
+                        [trans_prob[s, a, s_next] * value_func[s_next] for s_next in range(S)])  # computes the undiscounted returns
                     action_returns.append(action_return)
                 value_func[s] = np.max(action_returns)
                 policy[s] = np.argmax(action_returns)
@@ -83,8 +81,8 @@ class DirichletFiniteAgent:
             for t in range(horizon):
                 a_t = int(policy[s_t])
                 s_next = np.random.choice(range(0, self.S), size=1, p=env_trans_p[s_t, a_t, :])
-                cumulative_reward += env_reward[s_t, a_t, s_next]
-                max_reward += np.amax(env_reward[s_t, :, :]) #TODO: make reward for zero transition probabilities correspond to some negative value
+                cumulative_reward += env_reward[s_t, a_t]
+                max_reward += np.amax(env_reward[s_t, :]) #TODO: make reward for zero transition probabilities correspond to some negative value
 
             regret = max_reward - cumulative_reward
             regrets += [regret]
@@ -100,7 +98,7 @@ class DirichletFiniteAgent:
         num_visits = np.zeros((self.S, self.A, self.S, self.num_agents))
         curr_states = np.zeros(self.num_agents, dtype=np.int)
         evaluation_episodic_regret = np.zeros((episodes, self.num_agents))
-        R = 0
+        R = []
 
         for i in range(episodes):
             for a in range(self.num_agents):
@@ -122,13 +120,13 @@ class DirichletFiniteAgent:
             for agent in range(self.num_agents):
                 #evaluation as in sample from M multiple times
                 trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A)
-                reward = np.random.normal(self.mean, self.var, size=(state, action, state))
-                policy = self.compute_policy(trans_prob, self.S, self.A, reward) #TODO: check correctness
+                reward = np.random.normal(self.R_mean, self.R_var, size=(state, action))
+                policy = self.compute_policy(trans_prob, self.S, self.A, reward)
                 for _ in range(horizon):
                     s_t = curr_states[agent]
                     a_t = int(policy[s_t])
                     s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
-                    R += reward[s_t, a_t, s_next]
+                    R += [reward[s_t, a_t]]
                     num_visits[s_t, a_t, s_next, agent] += 1
                     curr_states[agent] = int(s_next)
                 evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
@@ -137,7 +135,7 @@ class DirichletFiniteAgent:
             num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
             M = np.ones(M.shape) + num_visits_current
             #update posterior for reward
-            self.mean, self.var = self.update(R, self.mean, self.var, self.tau_0, self.mu_0)
+            self.R_mean, self.R_var = np.mean(R), np.var(R, ddof=1)
             t += horizon
         # print("evaluation: ", evaluation_episodic_regret)
         episodic_regret_avg_over_agent = np.sum(evaluation_episodic_regret, axis=1)/self.num_agents
@@ -158,7 +156,7 @@ if __name__ == "__main__":
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
-        reward = np.random.normal(0.0, 1.0, size=(state, action, state))
+        reward = np.random.normal(0.0, 1.0, size=(state, action))
         trans_p = np.zeros([state, action, state])
         for i in range(state):
             for j in range(action):

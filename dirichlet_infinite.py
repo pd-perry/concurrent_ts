@@ -121,7 +121,8 @@ class DirichletInfiniteAgent:
                 t += 1
                 if t == T:
                     # print("evaluation: ", evaluation_epoch_regret)
-                    evaluation_epoch_regret = evaluation_epoch_regret[~np.all(evaluation_epoch_regret == 0, axis=1)]
+                    num_epochs = np.sum([1 for i in time_steps if i != 0])
+                    evaluation_epoch_regret = evaluation_epoch_regret[:int(num_epochs), :]
                     time_steps = time_steps[time_steps != 0]
                     epoch_regret_sum = np.sum(evaluation_epoch_regret, axis=1) / self.num_agents
                     # print("episodic: ", epoch_regret_sum)
@@ -135,7 +136,7 @@ class DirichletInfiniteAgent:
                     num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
                     M = np.ones(M.shape) + num_visits_current
                     for agent in range(len(policies)):
-                        evaluation_epoch_regret[i, agent] = self.evaluate(policies[agent], 50, 10) #TODO: find evaluation horizon
+                        evaluation_epoch_regret[i, agent] = self.evaluate(policies[agent], 50, 75) #TODO: find evaluation horizon
                     time_steps[i] = t
                     break
             if t == T:
@@ -168,4 +169,4 @@ if __name__ == "__main__":
             regret = psrl.train(1000, int(np.random.randint(0, state, 1)))
             total_regret += [regret]
 
-        np.savetxt("result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
+        # np.savetxt("result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
