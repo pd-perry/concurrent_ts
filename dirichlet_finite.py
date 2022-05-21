@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import itertools
 
 class DirichletFiniteAgent:
@@ -13,11 +14,7 @@ class DirichletFiniteAgent:
         self.num_agents = num_agents
         self.S = S
         self.A = A
-        self.M = np.zeros([S, A, S, num_agents])
-
-        for i in range(num_agents):
-            for s, a in itertools.product(range(S), range(A)):
-                self.M[s, a, :] = np.ones((S))
+        self.M = np.ones([S, A, S])
         self.trans_p = trans_p
         self.reward = reward
 
@@ -60,6 +57,7 @@ class DirichletFiniteAgent:
         regrets = []
         for env in range(num_env):
             #samples environment
+            #TODO: SAMPLE EACH TIME OR SAMPLE AT THE BEGINNING AND USE FOR EACH EVAL
             env_reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
             env_trans_p = np.zeros([state, action, state])
             for i in range(state):
@@ -88,20 +86,14 @@ class DirichletFiniteAgent:
         t = 1
         #initialize num_visits and state tracking for each agent
         num_visits = np.zeros((self.S, self.A, self.S, self.num_agents))
-        curr_states = np.zeros((self.num_agents), dtype=np.int)
-
-        # cumulative_rewards = np.zeros((self.num_agents))
-        # max_rewards = np.zeros((self.num_agents))
+        curr_states = np.zeros(self.num_agents, dtype=np.int)
         evaluation_episodic_regret = np.zeros((episodes, self.num_agents))
 
-        #loops through episode
         for i in range(episodes):
             for a in range(self.num_agents):
                 curr_states[a] = int(np.random.randint(0, self.S, 1))
 
-            #for each agent sample a dirichlet mdp and compute the max policy
             for agent in range(self.num_agents):
-                #Check whether to use M or N
                 trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A)
                 policy = self.compute_policy(trans_prob, self.S, self.A, self.reward)  # computes the max gain policy
                 for _ in range(horizon):
@@ -110,17 +102,16 @@ class DirichletFiniteAgent:
                     s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
                     num_visits[s_t, a_t, s_next, agent] += 1
                     curr_states[agent] = int(s_next)
-                # M[:, :, :, agent] = np.maximum(np.ones(num_visits[:, :, :, 0].shape), num_visits[:, :, :, agent])
                 evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
 
             # compute a num visits parameter for dirichlet
             num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
-            M = M + num_visits_current
+            M = np.ones(M.shape) + num_visits_current
             t += horizon
         # print("evaluation: ", evaluation_episodic_regret)
-        episodic_regret_sum = np.sum(evaluation_episodic_regret, axis=1)/self.num_agents
-        # print("episodic: ", episodic_regret_sum)
-        bayesian_regret = np.mean(episodic_regret_sum)
+        episodic_regret_avg_over_agent = np.sum(evaluation_episodic_regret, axis=1)/self.num_agents
+        # print("episodic: ", episodic_regret_avg_over_agent)
+        bayesian_regret = np.sum(episodic_regret_avg_over_agent)/t
         print("bayesian: ", bayesian_regret)
         # regret = np.sum(max_rewards - cumulative_rewards)
         # print("cumulative regret at episode", str(i), " ", regret)
@@ -156,4 +147,4 @@ if __name__ == "__main__":
             regret = psrl.train(30, 1, int(np.random.randint(0, state, 1)))
             total_regret += [regret]
 
-        np.savetxt("result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
+        np.savetxt("evaluation_finite/result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
