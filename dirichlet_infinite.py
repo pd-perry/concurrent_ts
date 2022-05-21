@@ -17,11 +17,8 @@ class DirichletInfiniteAgent:
         self.phi = int(np.floor(S * np.log(S * A / p)))
         self.w = np.log(T / p)
         self.k = np.log(T / p)
-        # self.M = np.full([S, A, S, num_agents], self.w)
-        self.M = np.zeros([S, A, S, num_agents])
-        for i in range(num_agents):
-            for s, a in itertools.product(range(S), range(A)):
-                self.M[s, a, :, i] = np.random.dirichlet(np.ones((S)))
+
+        self.M = np.ones([S, A, S])
 
         self.eta = np.sqrt(T * S / A) + 12 * self.w * S ** 4
         self.trans_p = trans_p
@@ -56,24 +53,13 @@ class DirichletInfiniteAgent:
             if iter % 10000 == 0:
                 print("diff: ", diff)
             if np.max(diff) <= tolerance:
-                # print(value_func)
                 break
-
-        # after value iteration output a deterministic policy
-        # policy = np.zeros(S)
-        # for s in range(S):
-        #     action_returns = []
-        #     for a in range(A):
-        #         action_return = np.sum([trans_prob[s, a, s_next] * (reward[s, a, s_next] + value_func[s_next]) for s_next in range(S)])  # computes the undiscounted returns
-        #         action_returns.append(action_return)
-        #     policy[s] = np.argmax(action_returns) ##doubled actions
         return policy
 
     def evaluate(self, policy, num_env, horizon, episodes=1):
         regrets = []
         for env in range(num_env):
-            #samples environment
-            env_reward = np.random.normal(0.0, 1.0, size=(state, action, state))
+            env_reward = self.reward
             env_trans_p = np.zeros([state, action, state])
             for i in range(state):
                 for j in range(action):
@@ -109,18 +95,13 @@ class DirichletInfiniteAgent:
             curr_states[i] = int(s_t)
         t = 0
 
-        # cumulative_reward = np.zeros(self.num_agents)
-        # max_reward = np.zeros(self.num_agents)
         evaluation_epoch_regret = np.zeros((epochs, self.num_agents))
         time_steps = np.zeros(epochs)
 
         for i in range(epochs):
-            num_visits = np.sum(num_visits[:, :, :, :], axis=-1)  # TODO: check if sum is correct
-            num_visits = np.expand_dims(num_visits, axis=-1).repeat(repeats=self.num_agents, axis=-1)
-
             policies = []
             for agent in range(self.num_agents):
-                trans_prob = self.posterior_sample(self.trans_p, M[:, :, :, agent], self.S, self.A,)
+                trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A,)
                 policy = self.compute_policy(trans_prob, self.S, self.A, phi, self.reward)  # computes the max gain policy
                 policies += [policy]
 
@@ -131,8 +112,6 @@ class DirichletInfiniteAgent:
                     s_t = curr_states[agent]
                     a_t = int(policies[agent][s_t])
                     s_next = np.random.choice(range(0,self.S), size=1, p=self.trans_p[s_t, a_t, :])
-                    # cumulative_reward[agent] += reward[s_t, a_t, s_next]
-                    # max_reward[agent] += np.amax(reward[s_t, :, :])  # should do expectation of max reward over transition probability?
                     num_visits_next[s_t, a_t, s_next, agent] += 1
 
                     if np.sum(num_visits_next[s_t, a_t, :, agent]) >= 2 * np.sum(num_visits[s_t, a_t, :, agent]):
@@ -140,28 +119,23 @@ class DirichletInfiniteAgent:
                     curr_states[agent] = s_next
 
                 t += 1
-                # if t % 500 == 0:
-                #     regret = np.mean(max_reward - cumulative_reward) / t
-                #     print("process at timestep", str(t) + ": " + str(regret))
                 if t == T:
-                    # regret = np.mean(max_reward - cumulative_reward) / t
-                    # print("regret at time step", str(t) + ": " + str(regret))
-                    # return regret
-                    print("evaluation: ", evaluation_epoch_regret)
+                    # print("evaluation: ", evaluation_epoch_regret)
                     evaluation_epoch_regret = evaluation_epoch_regret[~np.all(evaluation_epoch_regret == 0, axis=1)]
                     time_steps = time_steps[time_steps != 0]
                     epoch_regret_sum = np.sum(evaluation_epoch_regret, axis=1) / self.num_agents
-                    print("episodic: ", epoch_regret_sum)
+                    # print("episodic: ", epoch_regret_sum)
                     bayesian_regret = np.average(epoch_regret_sum, weights=time_steps)
                     print("bayesian: ", bayesian_regret)
                     return bayesian_regret
                     break
 
                 if end_epoch:
-                    M = np.maximum(np.ones(num_visits_next.shape), num_visits_next)
                     num_visits = num_visits_next
+                    num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
+                    M = np.ones(M.shape) + num_visits_current
                     for agent in range(len(policies)):
-                        evaluation_epoch_regret[i, agent] = self.evaluate(policies[agent], 50, 75) #TODO: find horizon
+                        evaluation_epoch_regret[i, agent] = self.evaluate(policies[agent], 50, 10) #TODO: find evaluation horizon
                     time_steps[i] = t
                     break
             if t == T:
@@ -170,13 +144,13 @@ class DirichletInfiniteAgent:
 
 if __name__ == "__main__":
     #Define MDP
-    state = 5
+    state = 10
     action = 5
     seeds = range(130, 150)
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
-        reward = np.random.normal(0.0, 1.0, size=(state, action, state))
+        reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
         trans_p = np.zeros([state, action, state])
         for i in range(state):
             for j in range(action):
@@ -187,7 +161,7 @@ if __name__ == "__main__":
         total_regret = []
 
         #TODO: add agents to the list
-        num_agents = [1, 2]
+        num_agents = [1, 2, 10, 20, 30]
         for i in num_agents:
             print("agents: ", i)
             psrl = DirichletInfiniteAgent(i, state, action, 20000, 0.75, trans_p, reward)
