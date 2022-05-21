@@ -22,10 +22,10 @@ class DirichletFiniteAgent:
         self.mean = 0.0
         self.var = 0.0
 
-    def update(self, R, mean, variance, tau_0, mu_0):
+    def update(self, R, mean, variance, tau_0, mu_0, sample_size):
         #tau_0 and mu_0 are priors of mean
-        updated_mean = (variance * mean + mu_0 * R)/(variance + mu_0)
-        updated_variance = variance * tau_0/(variance + tau_0)
+        updated_mean = (variance * mean + mu_0 * R)/(sample_size * variance + mu_0)
+        updated_variance = variance * tau_0/(sample_size* variance + tau_0)
         return updated_mean, updated_variance
 
     def posterior_sample(self, transition_prob, M, S, A):
@@ -100,6 +100,7 @@ class DirichletFiniteAgent:
         num_visits = np.zeros((self.S, self.A, self.S, self.num_agents))
         curr_states = np.zeros(self.num_agents, dtype=np.int)
         evaluation_episodic_regret = np.zeros((episodes, self.num_agents))
+        R = 0
 
         for i in range(episodes):
             for a in range(self.num_agents):
@@ -118,17 +119,16 @@ class DirichletFiniteAgent:
             #     num_visits[s_t, a_t, s_next, agent] += 1
             #     curr_states[agent] = int(s_next)
 
-
             for agent in range(self.num_agents):
                 #evaluation as in sample from M multiple times
                 trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A)
-                reward = np.abs(np.random.normal(self.mean, self.var, size=(state, action, state)))
+                reward = np.random.normal(self.mean, self.var, size=(state, action, state))
                 policy = self.compute_policy(trans_prob, self.S, self.A, reward) #TODO: check correctness
                 for _ in range(horizon):
                     s_t = curr_states[agent]
                     a_t = int(policy[s_t])
                     s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
-                    self.mean, self.var = self.update(reward[s_t, a_t, s_next], self.mean, self.var, self.tau_0, self.mu_0)
+                    R += reward[s_t, a_t, s_next]
                     num_visits[s_t, a_t, s_next, agent] += 1
                     curr_states[agent] = int(s_next)
                 evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
@@ -136,6 +136,8 @@ class DirichletFiniteAgent:
             # compute a num visits parameter for dirichlet
             num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
             M = np.ones(M.shape) + num_visits_current
+            #update posterior for reward
+            self.mean, self.var = self.update(R, self.mean, self.var, self.tau_0, self.mu_0)
             t += horizon
         # print("evaluation: ", evaluation_episodic_regret)
         episodic_regret_avg_over_agent = np.sum(evaluation_episodic_regret, axis=1)/self.num_agents
@@ -156,7 +158,7 @@ if __name__ == "__main__":
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
-        reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
+        reward = np.random.normal(0.0, 1.0, size=(state, action, state))
         trans_p = np.zeros([state, action, state])
         for i in range(state):
             for j in range(action):
