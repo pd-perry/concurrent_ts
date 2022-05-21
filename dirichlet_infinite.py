@@ -43,8 +43,8 @@ class DirichletInfiniteAgent:
                 value = value_func[s]
                 action_returns = []
                 for a in range(A):
-                    action_return = np.sum(
-                        [trans_prob[s, a, s_next] * (reward[s, a, s_next] + gamma * value_func[s_next]) for s_next in range(S)])  # computes the undiscounted returns
+                    action_return = reward[s, a] + gamma * np.sum(
+                        [trans_prob[s, a, s_next] * value_func[s_next] for s_next in range(S)])  # computes the undiscounted returns
                     action_returns.append(action_return)
                 value_func[s] = np.max(action_returns)
                 policy[s] = np.argmax(action_returns)
@@ -72,8 +72,8 @@ class DirichletInfiniteAgent:
             for t in range(horizon):
                 a_t = int(policy[s_t])
                 s_next = np.random.choice(range(0, self.S), size=1, p=env_trans_p[s_t, a_t, :])
-                cumulative_reward += env_reward[s_t, a_t, s_next]
-                max_reward += np.amax(env_reward[s_t, :, :]) #TODO: make reward for zero transition probabilities correspond to some negative value
+                cumulative_reward += env_reward[s_t, a_t]
+                max_reward += np.amax(env_reward[s_t, :])
 
             regret = max_reward - cumulative_reward
             regrets += [regret]
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
-        reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
+        reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
         trans_p = np.zeros([state, action, state])
         for i in range(state):
             for j in range(action):
