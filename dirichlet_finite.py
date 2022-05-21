@@ -17,11 +17,21 @@ class DirichletFiniteAgent:
         self.M = np.ones([S, A, S])
         self.trans_p = trans_p
         self.reward = reward
+        self.mu_0 = 0.0
+        self.tau_0 = 1.0
+        self.mean = 0.0
+        self.var = 0.0
+
+    def update(self, R, mean, variance, tau_0, mu_0):
+        #tau_0 and mu_0 are priors of mean
+        updated_mean = (variance * mean + mu_0 * R)/(variance + mu_0)
+        updated_variance = variance * tau_0/(variance + tau_0)
+        return updated_mean, updated_variance
 
     def posterior_sample(self, transition_prob, M, S, A):
         dirichlet_trans_p = np.zeros(transition_prob.shape)
         for s, a in itertools.product(range(S), range(A)):
-            dirichlet_trans_p[s, a] = np.random.dirichlet(M[s, a, :]) #TODO: MIGHT BE PROBLEMATIC
+            dirichlet_trans_p[s, a] = np.random.dirichlet(M[s, a, :])
         return dirichlet_trans_p
 
     def compute_policy(self, trans_prob, S, A, reward):
@@ -57,13 +67,15 @@ class DirichletFiniteAgent:
         regrets = []
         for env in range(num_env):
             #samples environment
-            #TODO: SAMPLE EACH TIME OR SAMPLE AT THE BEGINNING AND USE FOR EACH EVAL
-            env_reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
+            #TODO: ASK JERRY SAMPLE EACH TIME OR SAMPLE AT THE BEGINNING AND USE FOR EACH EVAL
+            # env_reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
+            env_reward = self.reward
             env_trans_p = np.zeros([state, action, state])
             for i in range(state):
                 for j in range(action):
-                    sample = np.random.gamma(1, 1, state)
-                    env_trans_p[i, j, :] = sample / np.sum(sample)
+                    # sample = np.random.gamma(1, 1, state)
+                    # env_trans_p[i, j, :] = sample / np.sum(sample)
+                    env_trans_p[i, j, :] = np.random.dirichlet(np.ones(self.S))
             cumulative_reward = 0
             max_reward = 0
             s_t = int(np.random.randint(0, self.S, 1))
@@ -93,13 +105,30 @@ class DirichletFiniteAgent:
             for a in range(self.num_agents):
                 curr_states[a] = int(np.random.randint(0, self.S, 1))
 
+            # trans_prob_tensor = torch.tensor([self.num_agents, self.S, self.A, self.S])
+            # policies = torch.tensor([self.num_agents, self.S])
+            # for _ in range(horizon):
+            #     for agent in range(self.num_agents):
+            #         trans_prob_tensor[agent, :, :, :] = self.posterior_sample(self.trans_p, M, self.S, self.A)
+            #         policies[agent, :] = self.compute_policy(trans_prob_tensor[agent, :, :, :], self.S, self.A,
+            #                                                  self.reward)
+            #     s_t = curr_states
+            #     a_t = policies.gather(1, s_t)
+            #     s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
+            #     num_visits[s_t, a_t, s_next, agent] += 1
+            #     curr_states[agent] = int(s_next)
+
+
             for agent in range(self.num_agents):
+                #evaluation as in sample from M multiple times
                 trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A)
-                policy = self.compute_policy(trans_prob, self.S, self.A, self.reward)  # computes the max gain policy
+                reward = np.abs(np.random.normal(self.mean, self.var, size=(state, action, state)))
+                policy = self.compute_policy(trans_prob, self.S, self.A, reward) #TODO: check correctness
                 for _ in range(horizon):
                     s_t = curr_states[agent]
                     a_t = int(policy[s_t])
                     s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
+                    self.mean, self.var = self.update(reward[s_t, a_t, s_next], self.mean, self.var, self.tau_0, self.mu_0)
                     num_visits[s_t, a_t, s_next, agent] += 1
                     curr_states[agent] = int(s_next)
                 evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
@@ -113,14 +142,12 @@ class DirichletFiniteAgent:
         # print("episodic: ", episodic_regret_avg_over_agent)
         bayesian_regret = np.sum(episodic_regret_avg_over_agent)/t
         print("bayesian: ", bayesian_regret)
-        # regret = np.sum(max_rewards - cumulative_rewards)
-        # print("cumulative regret at episode", str(i), " ", regret)
         return bayesian_regret
 
 
 if __name__ == "__main__":
     #Define MDP
-    state = 5
+    state = 10
     action = 5
     #TODO: scale up the state and action
     #uniform sample over all the state
@@ -133,8 +160,9 @@ if __name__ == "__main__":
         trans_p = np.zeros([state, action, state])
         for i in range(state):
             for j in range(action):
-                sample = np.random.gamma(1, 1, state)
-                trans_p[i, j, :] = sample / np.sum(sample)
+                # sample = np.random.gamma(1, 1, state)
+                # trans_p[i, j, :] = sample / np.sum(sample)
+                trans_p[i, j, :] = np.random.dirichlet(np.ones(state))
         #generate straight from dirichlet
         #end Define MDP
 
