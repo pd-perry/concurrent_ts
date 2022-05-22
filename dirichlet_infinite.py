@@ -116,7 +116,7 @@ class DirichletInfiniteAgent:
                         # evaluation_epoch_regret[env, i] = max_reward[env] - cumulative_reward[env]
                         time_steps[env, i] = t[env]
                         break
-            if int(np.sum(t)) == T * self.num_agents: #TODO: CHECK IF EACH ENVIRONMENT OR ALL ENVIRONMENT
+            if int(np.sum(t)) == T * self.num_env: #TODO: CHECK IF EACH ENVIRONMENT OR ALL ENVIRONMENT
                 bayesian_regret = np.average(end_regret)
                 print(bayesian_regret)
                 return np.mean(bayesian_regret)
