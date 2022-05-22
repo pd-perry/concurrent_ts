@@ -2,7 +2,7 @@ import numpy as np
 import itertools
 
 class DirichletInfiniteAgent:
-    def __init__(self, num_agents, S, A, T, p, trans_p, reward):
+    def __init__(self, num_agents, num_env, S, A, T, trans_p, reward):
         """
         S: state space
         A: action space
@@ -11,16 +11,12 @@ class DirichletInfiniteAgent:
         p: parameter between (0, 1]
         """
         self.num_agents = num_agents
+        self.num_env = num_env
         self.S = S
         self.A = A
         self.T = T
-        self.phi = int(np.floor(S * np.log(S * A / p)))
-        self.w = np.log(T / p)
-        self.k = np.log(T / p)
+        self.M = np.ones([num_env, S, A, S])
 
-        self.M = np.ones([S, A, S])
-
-        self.eta = np.sqrt(T * S / A) + 12 * self.w * S ** 4
         self.trans_p = trans_p
         self.reward = reward
 
@@ -84,62 +80,79 @@ class DirichletInfiniteAgent:
 
     def train(self, epochs, s_t):
         phi = self.phi
-        w = self.w
-        k = self.k
         M = self.M
         T = self.T
+        num_env = self.num_env
 
-        num_visits = np.zeros((self.S, self.A, self.S, self.num_agents))
-        curr_states = np.zeros((self.num_agents), dtype=np.int)
-        for i in range(len(curr_states)):
-            curr_states[i] = int(s_t)
-        t = 0
+        num_visits = np.zeros((num_env, self.S, self.A, self.S, self.num_agents))
+        curr_states = np.zeros((num_env, self.num_agents), dtype=np.int)
+        max_reward = np.zeros((num_env, self.num_agents))
+        cumulative_reward = np.zeros((num_env, self.num_agents))
+        R = np.zeros((num_env, self.S, self.A))
+        t = np.zeros(num_env)
 
-        evaluation_epoch_regret = np.zeros((epochs, self.num_agents))
-        time_steps = np.zeros(epochs)
+
+        evaluation_epoch_regret = np.zeros((num_env, epochs, self.num_agents))
+        end_regret = np.zerps(num_env)
+        time_steps = np.zeros((num_env, epochs))
 
         for i in range(epochs):
-            policies = []
-            for agent in range(self.num_agents):
-                trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A,)
-                policy = self.compute_policy(trans_prob, self.S, self.A, phi, self.reward)  # computes the max gain policy
-                policies += [policy]
-
-            num_visits_next = np.copy(num_visits)
-            while True:
-                end_epoch = False
+            end_epoch = np.zeros(num_env)
+            for env in range(num_env):
+                if end_epoch[env] == 1 or t[env] == T:
+                    continue
+                for i in range(len(curr_states)):
+                    curr_states[env, i] = int(s_t)
+                policies = []
                 for agent in range(self.num_agents):
-                    s_t = curr_states[agent]
-                    a_t = int(policies[agent][s_t])
-                    s_next = np.random.choice(range(0,self.S), size=1, p=self.trans_p[s_t, a_t, :])
-                    num_visits_next[s_t, a_t, s_next, agent] += 1
+                    trans_prob = self.posterior_sample(self.trans_p, M, self.S, self.A,)
+                    reward = np.zeros((self.S, self.A))
+                    for s in range(self.S):
+                        for a in range(self.A):
+                            reward[s, a] = np.abs(np.float(np.random.normal(self.R_mean[env, s, a], 1, size=1)))
+                    policy = self.compute_policy(trans_prob, self.S, self.A, phi, reward)  # computes the max gain policy
+                    policies += [policy]
 
-                    if np.sum(num_visits_next[s_t, a_t, :, agent]) >= 2 * np.sum(num_visits[s_t, a_t, :, agent]):
-                        end_epoch = True
-                    curr_states[agent] = s_next
+                num_visits_next = np.copy(num_visits[env])
+                while True:
+                    for agent in range(self.num_agents):
+                        s_t = curr_states[env, agent]
+                        a_t = int(policies[agent][s_t])
+                        s_next = np.random.choice(range(0,self.S), size=1, p=self.trans_p[s_t, a_t, :])
+                        R[env, s_t, a_t] += reward[s_t, a_t]  # TODO: check if there needs to be agent dimension
+                        max_reward[env, agent] += np.amax(reward[s_t, :])
+                        cumulative_reward[env, agent] += reward[s_t, a_t]
+                        num_visits_next[env, s_t, a_t, s_next, agent] += 1
 
-                t += 1
-                if t == T:
-                    # print("evaluation: ", evaluation_epoch_regret)
-                    num_epochs = np.sum([1 for i in time_steps if i != 0])
-                    evaluation_epoch_regret = evaluation_epoch_regret[:int(num_epochs), :]
-                    time_steps = time_steps[time_steps != 0]
-                    epoch_regret_sum = np.sum(evaluation_epoch_regret, axis=1) / self.num_agents
-                    # print("episodic: ", epoch_regret_sum)
-                    bayesian_regret = np.average(epoch_regret_sum, weights=time_steps)
-                    print("bayesian: ", bayesian_regret)
-                    return bayesian_regret
-                    break
+                        if np.sum(num_visits_next[s_t, a_t, :, agent]) >= 2 * np.sum(num_visits[env, s_t, a_t, :, agent]):
+                            end_epoch[env] = 1
+                        curr_states[env, agent] = s_next
 
-                if end_epoch:
-                    num_visits = num_visits_next
-                    num_visits_current = np.sum(num_visits[:, :, :, :], axis=-1)
-                    M = np.ones(M.shape) + num_visits_current
-                    for agent in range(len(policies)):
-                        evaluation_epoch_regret[i, agent] = self.evaluate(policies[agent], 50, 75) #TODO: find evaluation horizon
-                    time_steps[i] = t
-                    break
-            if t == T:
+                    t[env] += 1
+                    if t[env] == T:
+                        # print("evaluation: ", evaluation_epoch_regret)
+                        num_epochs = np.sum([1 for i in time_steps[env] if i != 0])
+                        evaluation_epoch_regret[env] = evaluation_epoch_regret[env, :int(num_epochs), :]
+                        time_steps = time_steps[time_steps != 0]
+                        epoch_regret_avg = np.sum(evaluation_epoch_regret[env], axis=1) / self.num_agents
+                        # print("episodic: ", epoch_regret_sum)
+                        bayesian_regret = np.average(epoch_regret_avg, weights=time_steps[env])
+                        print("bayesian: ", bayesian_regret)
+                        end_regret[env] = bayesian_regret
+                        break
+
+                    if end_epoch:
+                        num_visits[env] = num_visits_next
+                        num_visits_current = np.sum(num_visits[env, :, :, :, :], axis=-1)
+                        M[env] = np.ones(M[env].shape) + num_visits_current
+
+                        evaluation_epoch_regret[env, i] = max_reward[env] - cumulative_reward[env]
+                        max_reward[env] = np.zeros(self.num_agents)
+                        cumulative_reward[env] = np.zeros(self.num_agents)
+                        time_steps[env, i] = t[env]
+                        break
+            if int(np.sum(t)) == T * num_agents: #TODO: CHECK IF EACH ENVIRONMENT OR ALL ENVIRONMENT
+                return np.avg(end_regret)
                 break
 
 
@@ -161,11 +174,10 @@ if __name__ == "__main__":
 
         total_regret = []
 
-        #TODO: add agents to the list
         num_agents = [1, 2, 10, 20, 30]
         for i in num_agents:
             print("agents: ", i)
-            psrl = DirichletInfiniteAgent(i, state, action, 20000, 0.75, trans_p, reward)
+            psrl = DirichletInfiniteAgent(i, 10, state, action, 20000, trans_p, reward)
             regret = psrl.train(1000, int(np.random.randint(0, state, 1)))
             total_regret += [regret]
 
