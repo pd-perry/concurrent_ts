@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 import itertools
 
 class DirichletFiniteAgent:
@@ -55,35 +54,6 @@ class DirichletFiniteAgent:
 
         return policy
 
-    def evaluate(self, policy, num_env, horizon, episodes=1):
-        regrets = []
-        for env in range(num_env):
-            #samples environment
-            #TODO: ASK JERRY SAMPLE EACH TIME OR SAMPLE AT THE BEGINNING AND USE FOR EACH EVAL
-            # env_reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action, state)))
-            env_reward = self.reward
-            env_trans_p = np.zeros([state, action, state])
-            for i in range(state):
-                for j in range(action):
-                    # sample = np.random.gamma(1, 1, state)
-                    # env_trans_p[i, j, :] = sample / np.sum(sample)
-                    env_trans_p[i, j, :] = np.random.dirichlet(np.ones(self.S))
-            cumulative_reward = 0
-            max_reward = 0
-            s_t = int(np.random.randint(0, self.S, 1))
-            #get regret for one episode
-            for t in range(horizon):
-                a_t = int(policy[s_t])
-                s_next = np.random.choice(range(0, self.S), size=1, p=env_trans_p[s_t, a_t, :])
-                cumulative_reward += env_reward[s_t, a_t]
-                max_reward += np.amax(env_reward[s_t, :]) #TODO: make reward for zero transition probabilities correspond to some negative value
-
-            regret = max_reward - cumulative_reward
-            regrets += [regret]
-
-        avg_regret = np.sum(regrets)/num_env
-        return avg_regret
-
     def train(self, episodes, horizon):
         num_env = self.num_env
         M = self.M
@@ -102,24 +72,24 @@ class DirichletFiniteAgent:
 
                 for agent in range(self.num_agents):
                     #evaluation as in sample from M multiple times
-                    trans_prob = self.posterior_sample(self.trans_p, M[env], self.S, self.A)
+                    trans_prob = self.posterior_sample(self.trans_p[env], M[env], self.S, self.A)
                     reward = np.zeros((self.S, self.A))
                     for s in range(self.S):
                         for a in range(self.A):
-                            reward[s, a] = np.abs(np.float(np.random.normal(self.R_mean[env, s, a], 1, size=1))) #TODO: each s,a pair has its own posterior
+                            reward[s, a] = np.abs(np.float(np.random.normal(self.R_mean[env, s, a], 1, size=1))) #each s,a pair has its own posterior
                     policy = self.compute_policy(trans_prob, self.S, self.A, reward)
                     for _ in range(horizon):
                         s_t = curr_states[env, agent]
                         a_t = int(policy[s_t])
-                        s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[s_t, a_t, :])
-                        R[env, s_t, a_t] += reward[s_t, a_t] #TODO: check if there needs to be agent dimension
-                        max_reward[env, agent] += np.amax(reward[s_t, :])
-                        cumulative_reward[env, agent] += reward[s_t, a_t]
+                        s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[env, s_t, a_t, :])
+                        R[env, s_t, a_t] += self.reward[env, s_t, a_t] #TODO: god reward or agent reward
+                        max_reward[env, agent] += np.amax(self.reward[env, s_t, :]) #max reward is the maximum reward of the god generated MDP
+                        cumulative_reward[env, agent] += self.reward[env, s_t, a_t]
                         num_visits[env, s_t, a_t, s_next, agent] += 1
                         curr_states[env, agent] = int(s_next)
                     # evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
                     evaluation_episodic_regret[env, i, agent] = max_reward[env, agent] - cumulative_reward[env, agent]
-                    max_reward[env, agent] = 0
+                    max_reward[env, agent] = 0 #TODO CHECK IF THIS IS NECESSARY
                     cumulative_reward[env, agent] = 0
 
                 # compute a num visits parameter for dirichlet
@@ -149,13 +119,21 @@ if __name__ == "__main__":
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
-        reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
-        trans_p = np.zeros([state, action, state])
-        for i in range(state):
-            for j in range(action):
-                # sample = np.random.gamma(1, 1, state)
-                # trans_p[i, j, :] = sample / np.sum(sample)
-                trans_p[i, j, :] = np.random.dirichlet(np.ones(state))
+
+        num_env = 10
+        all_env_rewards = np.zeros((num_env, state, action))
+        all_env_trans_p = np.zeros((num_env, state, action, state))
+
+        for env in range(num_env):
+            reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
+            trans_p = np.zeros([state, action, state])
+            for i in range(state):
+                for j in range(action):
+                    # sample = np.random.gamma(1, 1, state)
+                    # trans_p[i, j, :] = sample / np.sum(sample)
+                    trans_p[i, j, :] = np.random.dirichlet(np.ones(state))
+            all_env_rewards[env] = reward
+            all_env_trans_p[env] = trans_p
         #generate straight from dirichlet
         #end Define MDP
 
@@ -164,7 +142,7 @@ if __name__ == "__main__":
         num_agents = [1, 2, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         for agents in num_agents:
             print("agent: ", agents)
-            psrl = DirichletFiniteAgent(agents, 10, state, action, trans_p, reward)
+            psrl = DirichletFiniteAgent(agents, num_env, state, action, all_env_trans_p, all_env_rewards)
             regret = psrl.train(30, 1)
             total_regret += [regret]
 
