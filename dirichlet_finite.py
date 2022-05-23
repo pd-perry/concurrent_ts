@@ -102,14 +102,14 @@ class DirichletFiniteAgent:
                         else:
                             a_t = int(np.argmax(reward[s_t, :]))
                         s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[env, s_t, a_t, :])
-                        R[env, s_t, a_t] += self.reward[env, s_t, a_t] #TODO: god reward or agent reward
+                        R[env, s_t, a_t] += self.reward[env, s_t, a_t]
                         max_reward[env, agent] += np.amax(self.reward[env, s_t, :]) #max reward is the maximum reward of the god generated MDP
                         cumulative_reward[env, agent] += self.reward[env, s_t, a_t]
                         num_visits[env, s_t, a_t, s_next, agent] += 1
                         curr_states[env, agent] = int(s_next)
                     # evaluation_episodic_regret[i, agent] = self.evaluate(policy, 50, horizon)
                     evaluation_episodic_regret[env, i, agent] = max_reward[env, agent] - cumulative_reward[env, agent]
-                    max_reward[env, agent] = 0 #TODO CHECK IF THIS IS NECESSARY
+                    max_reward[env, agent] = 0
                     cumulative_reward[env, agent] = 0
 
                 # compute a num visits parameter for dirichlet
