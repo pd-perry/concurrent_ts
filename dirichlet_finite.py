@@ -149,7 +149,7 @@ if __name__ == "__main__":
     state = 10
     action = 5
     num_env = 100
-    episodes=200
+    episodes = 200
     #TODO: scale up the state and action
     #uniform sample over all the state
     #set horizon=1, initial state for each agent drawn from uniform distribution across all states
