@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+from numba import jit
 import itertools
 
 class DirichletInfiniteAgent:
@@ -20,12 +22,14 @@ class DirichletInfiniteAgent:
         self.trans_p = trans_p
         self.reward = reward
 
+    @jit(nopython=True)
     def posterior_sample(self, transition_prob, M, S, A):
         dirichlet_trans_p = np.zeros(transition_prob.shape)
         for s, a in itertools.product(range(S), range(A)):
             dirichlet_trans_p[s, a] = np.random.dirichlet(M[s, a, :])
         return dirichlet_trans_p
 
+    @jit(nopython=True)
     def compute_policy(self, trans_prob, S, A, reward):
         # performs undiscounted value iteration to output an optimal policy
         value_func = np.zeros(S)
@@ -52,7 +56,7 @@ class DirichletInfiniteAgent:
                 break
         return policy
 
-
+    @jit(nopython=True)
     def train(self, epochs, s_t):
         M = self.M
         T = self.T
@@ -124,6 +128,22 @@ class DirichletInfiniteAgent:
 
 
 if __name__ == "__main__":
+    # _devece_ddtype_tensor_map = {
+    #     'cuda': {
+    #         torch.float32: torch.cuda.FloatTensor,
+    #         torch.float64: torch.cuda.DoubleTensor,
+    #         torch.float16: torch.cuda.HalfTensor,
+    #         torch.uint8: torch.cuda.ByteTensor,
+    #         torch.int8: torch.cuda.CharTensor,
+    #         torch.int16: torch.cuda.ShortTensor,
+    #         torch.int32: torch.cuda.IntTensor,
+    #         torch.int64: torch.cuda.LongTensor,
+    #         torch.bool: torch.cuda.BoolTensor,
+    #     }
+    # }
+    # if torch.cuda.is_available():
+    #     torch.set_default_tensor_type(_devece_ddtype_tensor_map['cuda'][torch.get_default_dtype()])
+
     #Define MDP
     state = 10
     action = 5

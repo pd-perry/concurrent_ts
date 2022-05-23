@@ -1,6 +1,22 @@
 import numpy as np
+import torch
+from numba import jit, int32, float32, int64
+from numba.experimental import jitclass
 import itertools
 
+spec = [
+    ('num_agents', int32),               # a simple scalar field
+    ('num_env', int32),
+    ('S', int32),
+    ('A', int32),
+    ('M', int64[:, :, :, :]),
+    ('trans_p', float32[:]),
+    ('reward', float32[:]),
+    ('R_mean', float32[:])         # an array field float32[:]
+
+]
+
+# @jitclass(spec)
 class DirichletFiniteAgent:
     def __init__(self, num_agents, num_env, S, A, trans_p, reward):
         """
@@ -25,7 +41,7 @@ class DirichletFiniteAgent:
             dirichlet_trans_p[s, a] = np.random.dirichlet(M[s, a, :])
         return dirichlet_trans_p
 
-    def compute_policy(self, trans_prob, S, A, reward):
+    def compute_policy(self, trans_prob, S, A, reward, horizon):
         # performs undiscounted value iteration to output an optimal policy
         value_func = np.zeros(S)
         policy = np.zeros(S)
@@ -77,10 +93,14 @@ class DirichletFiniteAgent:
                     for s in range(self.S):
                         for a in range(self.A):
                             reward[s, a] = np.abs(np.float(np.random.normal(self.R_mean[env, s, a], 1, size=1))) #each s,a pair has its own posterior
-                    policy = self.compute_policy(trans_prob, self.S, self.A, reward)
+                    if horizon != 1:
+                        policy = self.compute_policy(trans_prob, self.S, self.A, reward, horizon)
                     for _ in range(horizon):
                         s_t = curr_states[env, agent]
-                        a_t = int(policy[s_t])
+                        if horizon != 1:
+                            a_t = int(policy[s_t])
+                        else:
+                            a_t = int(np.argmax(reward[s_t, :]))
                         s_next = np.random.choice(range(0, self.S), size=1, p=self.trans_p[env, s_t, a_t, :])
                         R[env, s_t, a_t] += self.reward[env, s_t, a_t] #TODO: god reward or agent reward
                         max_reward[env, agent] += np.amax(self.reward[env, s_t, :]) #max reward is the maximum reward of the god generated MDP
@@ -110,8 +130,26 @@ class DirichletFiniteAgent:
 
 if __name__ == "__main__":
     #Define MDP
+    # _devece_ddtype_tensor_map = {
+    #     'cuda': {
+    #         torch.float32: torch.cuda.FloatTensor,
+    #         torch.float64: torch.cuda.DoubleTensor,
+    #         torch.float16: torch.cuda.HalfTensor,
+    #         torch.uint8: torch.cuda.ByteTensor,
+    #         torch.int8: torch.cuda.CharTensor,
+    #         torch.int16: torch.cuda.ShortTensor,
+    #         torch.int32: torch.cuda.IntTensor,
+    #         torch.int64: torch.cuda.LongTensor,
+    #         torch.bool: torch.cuda.BoolTensor,
+    #     }
+    # }
+    # if torch.cuda.is_available():
+    #     torch.set_default_tensor_type(_devece_ddtype_tensor_map['cuda'][torch.get_default_dtype()])
+
     state = 10
     action = 5
+    num_env = 100
+    episodes=200
     #TODO: scale up the state and action
     #uniform sample over all the state
     #set horizon=1, initial state for each agent drawn from uniform distribution across all states
@@ -120,7 +158,6 @@ if __name__ == "__main__":
         print("seed: ", seed)
         np.random.seed(seed)
 
-        num_env = 10
         all_env_rewards = np.zeros((num_env, state, action))
         all_env_trans_p = np.zeros((num_env, state, action, state))
 
@@ -143,7 +180,7 @@ if __name__ == "__main__":
         for agents in num_agents:
             print("agent: ", agents)
             psrl = DirichletFiniteAgent(agents, num_env, state, action, all_env_trans_p, all_env_rewards)
-            regret = psrl.train(30, 1)
+            regret = psrl.train(episodes, 1)
             total_regret += [regret]
 
         np.savetxt("evaluation_finite/result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
