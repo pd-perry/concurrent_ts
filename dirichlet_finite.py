@@ -1,20 +1,20 @@
 import numpy as np
-import torch
-from numba import jit, int32, float32, int64
-from numba.experimental import jitclass
+# import torch
+# from numba import jit, int32, float32, int64
+# from numba.experimental import jitclass
 import itertools
 
-spec = [
-    ('num_agents', int32),               # a simple scalar field
-    ('num_env', int32),
-    ('S', int32),
-    ('A', int32),
-    ('M', int64[:, :, :, :]),
-    ('trans_p', float32[:]),
-    ('reward', float32[:]),
-    ('R_mean', float32[:])         # an array field float32[:]
-
-]
+# spec = [
+#     ('num_agents', int32),               # a simple scalar field
+#     ('num_env', int32),
+#     ('S', int32),
+#     ('A', int32),
+#     ('M', int64[:, :, :, :]),
+#     ('trans_p', float32[:]),
+#     ('reward', float32[:]),
+#     ('R_mean', float32[:])         # an array field float32[:]
+#
+# ]
 
 # @jitclass(spec)
 class DirichletFiniteAgent:
@@ -146,8 +146,8 @@ if __name__ == "__main__":
     # if torch.cuda.is_available():
     #     torch.set_default_tensor_type(_devece_ddtype_tensor_map['cuda'][torch.get_default_dtype()])
 
-    state = 10
-    action = 5
+    state = 20
+    action = 10
     num_env = 100
     episodes = 200
     #TODO: scale up the state and action
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         for agents in num_agents:
             print("agent: ", agents)
             psrl = DirichletFiniteAgent(agents, num_env, state, action, all_env_trans_p, all_env_rewards)
-            regret = psrl.train(episodes, 1)
+            regret = psrl.train(episodes, 100)
             total_regret += [regret]
 
         np.savetxt("evaluation_finite/result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")
