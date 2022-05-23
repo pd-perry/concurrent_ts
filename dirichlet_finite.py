@@ -10,12 +10,11 @@ import itertools
 #     ('S', int32),
 #     ('A', int32),
 #     ('M', int64[:, :, :, :]),
-#     ('trans_p', float32[:]),
-#     ('reward', float32[:]),
-#     ('R_mean', float32[:])         # an array field float32[:]
-#
+#     ('trans_p', float32[:, :, :, :]),
+#     ('reward', float32[:, :, :]),
+#     ('R_mean', float32[:, :, :])         # an array field float32[:]
 # ]
-
+#
 # @jitclass(spec)
 class DirichletFiniteAgent:
     def __init__(self, num_agents, num_env, S, A, trans_p, reward):
@@ -30,10 +29,10 @@ class DirichletFiniteAgent:
         self.num_env = num_env
         self.S = S
         self.A = A
-        self.M = np.ones([num_env, S, A, S])
+        self.M = np.ones((num_env, S, A, S), dtype=np.int64)
         self.trans_p = trans_p
         self.reward = reward
-        self.R_mean = np.full((num_env, S, A), 0.0) #mu_0 =0, sigma_0=1 confirmed, x=sample mean, sigma=1, n is max(1, num_visit to (s,a) pair)
+        self.R_mean = np.full((num_env, S, A), 0.0, dtype=np.float32) #mu_0 =0, sigma_0=1 confirmed, x=sample mean, sigma=1, n is max(1, num_visit to (s,a) pair)
 
     def posterior_sample(self, transition_prob, M, S, A):
         dirichlet_trans_p = np.zeros(transition_prob.shape)
@@ -74,12 +73,13 @@ class DirichletFiniteAgent:
         num_env = self.num_env
         M = self.M
         num_visits = np.zeros((num_env, self.S, self.A, self.S, self.num_agents))
-        curr_states = np.zeros((num_env, self.num_agents), dtype=np.int)
+        curr_states = np.zeros((num_env, self.num_agents), dtype=np.int64)
         evaluation_episodic_regret = np.zeros((num_env, episodes, self.num_agents))
         max_reward = np.zeros((num_env, self.num_agents))
         cumulative_reward = np.zeros((num_env, self.num_agents))
         R = np.zeros((num_env, self.S, self.A))
         t = np.ones(num_env)
+
         for i in range(episodes):
             for env in range(num_env):
                 # initialize num_visits and state tracking for each agent
@@ -148,8 +148,8 @@ if __name__ == "__main__":
 
     state = 20
     action = 10
-    num_env = 100
-    episodes = 200
+    num_env = 50
+    episodes = 30
     #TODO: scale up the state and action
     #uniform sample over all the state
     #set horizon=1, initial state for each agent drawn from uniform distribution across all states
@@ -158,12 +158,12 @@ if __name__ == "__main__":
         print("seed: ", seed)
         np.random.seed(seed)
 
-        all_env_rewards = np.zeros((num_env, state, action))
-        all_env_trans_p = np.zeros((num_env, state, action, state))
+        all_env_rewards = np.zeros((num_env, state, action), dtype=np.float32)
+        all_env_trans_p = np.zeros((num_env, state, action, state), dtype=np.float32)
 
         for env in range(num_env):
-            reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
-            trans_p = np.zeros([state, action, state])
+            reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)), dtype=np.float32)
+            trans_p = np.zeros([state, action, state], dtype=np.float32)
             for i in range(state):
                 for j in range(action):
                     # sample = np.random.gamma(1, 1, state)
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         for agents in num_agents:
             print("agent: ", agents)
             psrl = DirichletFiniteAgent(agents, num_env, state, action, all_env_trans_p, all_env_rewards)
-            regret = psrl.train(episodes, 100)
+            regret = psrl.train(episodes, 75)
             total_regret += [regret]
 
         np.savetxt("evaluation_finite/result" + str(seed) + ".csv", np.column_stack((num_agents, total_regret)), delimiter=",")

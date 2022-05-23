@@ -66,8 +66,8 @@ class DirichletInfiniteAgent:
                 curr_states[env, i] = int(s_t)
         max_reward = np.zeros((num_env, self.num_agents))
         cumulative_reward = np.zeros((num_env, self.num_agents))
-        t = np.zeros(num_env)
 
+        t = np.zeros(num_env)
         end_regret = np.zeros(num_env)
         time_steps = np.zeros((num_env, epochs))
 
@@ -80,7 +80,7 @@ class DirichletInfiniteAgent:
                 policies = []
                 for agent in range(self.num_agents):
                     trans_prob = self.posterior_sample(self.trans_p[env], M[env], self.S, self.A,)
-                    policy = self.compute_policy(trans_prob, self.S, self.A, self.reward[env])  # computes the max gain policy
+                    policy = self.compute_policy(trans_prob, self.S, self.A, self.reward)  # computes the max gain policy
                     policies += [policy]
 
                 num_visits_next = np.copy(num_visits[env])
@@ -90,8 +90,8 @@ class DirichletInfiniteAgent:
                         a_t = int(policies[agent][s_t])
                         s_next = np.random.choice(range(0,self.S), size=1, p=self.trans_p[env, s_t, a_t, :])
                         # R[env, s_t, a_t] += reward[s_t, a_t]  # TODO: check if there needs to be agent dimension
-                        max_reward[env, agent] += np.amax(self.reward[env, s_t, :])
-                        cumulative_reward[env, agent] += self.reward[env, s_t, a_t]
+                        max_reward[env, agent] += np.amax(self.reward[s_t, :])
+                        cumulative_reward[env, agent] += self.reward[s_t, a_t]
                         num_visits_next[s_t, a_t, s_next, agent] += 1
 
                         if np.sum(num_visits_next[s_t, a_t, :, agent]) >= 2 * np.sum(num_visits[env, s_t, a_t, :, agent]):
@@ -149,20 +149,17 @@ if __name__ == "__main__":
         print("seed: ", seed)
         np.random.seed(seed)
 
-        T = 4000
+        T = 250
         num_env = 10
-        all_env_rewards = np.zeros((num_env, state, action))
+        # all_env_rewards = np.zeros((num_env, state, action))
+        all_env_rewards = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
         all_env_trans_p = np.zeros((num_env, state, action, state))
 
         for env in range(num_env):
-            reward = np.abs(np.random.normal(0.0, 1.0, size=(state, action)))
             trans_p = np.zeros([state, action, state])
             for i in range(state):
                 for j in range(action):
-                    # sample = np.random.gamma(1, 1, state)
-                    # trans_p[i, j, :] = sample / np.sum(sample)
                     trans_p[i, j, :] = np.random.dirichlet(np.ones(state))
-            all_env_rewards[env] = reward
             all_env_trans_p[env] = trans_p
         total_regret = []
 
