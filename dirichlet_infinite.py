@@ -67,6 +67,23 @@ class DirichletInfiniteAgent:
         max_reward = np.zeros((num_env, self.num_agents))
         cumulative_reward = np.zeros((num_env, self.num_agents))
 
+        optimal_policy = np.zeros((num_env, self.S))
+        for i in range(num_env):
+            optimal_policy[i] = self.compute_policy(self.trans_p[i], self.S, self.A, self.reward)
+
+        state = np.zeros((num_env, self.num_agents))
+        for i in range(num_env):
+            for a in range(self.num_agents):
+                state[i, a] = int(np.random.randint(0, self.S, 1))
+        for env in range(num_env):
+            for t in range(T):
+                for agent in range(self.num_agents):
+                    s = int(state[env, agent])
+                    action = int(optimal_policy[env, s])
+                    next_s = np.random.choice(range(0,self.S), size=1, p=self.trans_p[env, s, action, :])
+                    max_reward[env, agent] += np.amax(self.reward[s, :])
+                    state[env, agent] = next_s
+
         t = np.zeros(num_env)
         end_regret = np.zeros(num_env)
         time_steps = np.zeros((num_env, epochs))
@@ -89,8 +106,7 @@ class DirichletInfiniteAgent:
                         s_t = curr_states[env, agent]
                         a_t = int(policies[agent][s_t])
                         s_next = np.random.choice(range(0,self.S), size=1, p=self.trans_p[env, s_t, a_t, :])
-                        # R[env, s_t, a_t] += reward[s_t, a_t]  # TODO: check if there needs to be agent dimension
-                        max_reward[env, agent] += np.amax(self.reward[s_t, :])
+                        # max_reward[env, agent] += np.amax(self.reward[s_t, :])
                         cumulative_reward[env, agent] += self.reward[s_t, a_t]
                         num_visits_next[s_t, a_t, s_next, agent] += 1
 
@@ -142,9 +158,9 @@ if __name__ == "__main__":
     #     torch.set_default_tensor_type(_devece_ddtype_tensor_map['cuda'][torch.get_default_dtype()])
 
     #Define MDP
-    state = 10
-    action = 5
-    seeds = range(130, 150)
+    state = 20
+    action = 10
+    seeds = range(130, 131)
     for seed in seeds:
         print("seed: ", seed)
         np.random.seed(seed)
@@ -163,7 +179,7 @@ if __name__ == "__main__":
             all_env_trans_p[env] = trans_p
         total_regret = []
 
-        num_agents = [1, 2, 10, 20, 30]
+        num_agents = [1, 2, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         for i in num_agents:
             print("agents: ", i)
             psrl = DirichletInfiniteAgent(i, num_env, state, action, T, all_env_trans_p, all_env_rewards)
