@@ -85,11 +85,11 @@ class DirichletFiniteAgent:
 
         for i in range(episodes):
             # initialize num_visits and state tracking for each agent in each env
-            curr_states = torch.randint(0, self.S, size=[self.num_envs, self.num_agents])
+            curr_states = torch.randint(0, self.S, size=[self.num_envs, self.num_agents + 1]) #plus one is for optimal reward
 
             # (Alg) sample MDP's from the posterior 
             # [n_envs, n_agents, n_S, n_A, n_S], [n_envs, n_agents, n_S, n_A]
-            sampled_trans_p, sampled_reawrds = self.posterior_sample(
+            sampled_trans_p, sampled_rewards = self.posterior_sample(
                 self.alpha, self.reward_mean, self.reward_scale, self.num_agents)  
 
             # extract optimal policies from sampled MDP's: [n_envs, n_agents, n_S]
@@ -97,25 +97,34 @@ class DirichletFiniteAgent:
             for env in range(self.num_envs):
                 for agent in range(self.num_agents):
                     policy[env, agent, :] = policy_from_mdp(
-                        sampled_trans_p[env, agent], sampled_reawrds[env, agent], self.S, self.A)
+                        sampled_trans_p[env, agent], sampled_rewards[env, agent], self.S, self.A)
 
             for _ in range(horizon):
-                s_t = curr_states  # [n_envs, n_agents]
+                s_t = curr_states[:, :-1]  # [n_envs, n_agents]
+                optimal_s_t = curr_states[:, -1]
                 a_t = policy[
                     torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1),
                     torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1),
                     s_t.unsqueeze(-1)].squeeze()  # [n_envs, n_agents]
                 optimal_a_t = self.optimal_policy[
                     torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1),
-                    torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1),
-                    s_t.unsqueeze(-1)].squeeze()  # [n_envs, n_agents]
+                    torch.arange(1).unsqueeze(0).unsqueeze(-1),
+                    optimal_s_t.unsqueeze(-1).unsqueeze(-1)].squeeze()  # [n_envs, 1 optimal agent]
                 trans_p = self.trans_p[
-                    torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1), 
-                    torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1).unsqueeze(-1), 
+                    torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
+                    torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1).unsqueeze(-1),
                     s_t.unsqueeze(-1).unsqueeze(-1), 
                     a_t.unsqueeze(-1).unsqueeze(-1)].squeeze()  # [n_envs, n_agents, n_S]
                 s_next = torch.distributions.categorical.Categorical(trans_p).sample()  # [n_envs, n_agents]
-                curr_states = s_next
+
+                optimal_trans_p = self.trans_p[
+                    torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
+                    torch.arange(1).unsqueeze(0).unsqueeze(-1).unsqueeze(-1),
+                    optimal_s_t.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
+                    optimal_a_t.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)].squeeze().unsqueeze(1)
+                optimal_s_next = torch.distributions.categorical.Categorical(optimal_trans_p).sample()
+
+                curr_states = torch.hstack((s_next, optimal_s_next))
                 reward = self.rewards[
                     torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1), 
                     torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1).unsqueeze(-1), 
@@ -123,9 +132,9 @@ class DirichletFiniteAgent:
                     a_t.unsqueeze(-1).unsqueeze(-1)].squeeze()  # [n_envs, n_agents]
                 optimal_reward = self.rewards[
                     torch.arange(self.num_envs).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1), 
-                    torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1).unsqueeze(-1), 
-                    s_t.unsqueeze(-1).unsqueeze(-1), 
-                    optimal_a_t.unsqueeze(-1).unsqueeze(-1)].squeeze()  # [n_envs, n_agents]
+                    torch.arange(self.num_agents).unsqueeze(0).unsqueeze(-1).unsqueeze(-1),
+                    optimal_s_t.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1),
+                    optimal_a_t.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)].squeeze()  # [n_envs, n_agents]
 
                 cum_regret += optimal_reward - reward
 
